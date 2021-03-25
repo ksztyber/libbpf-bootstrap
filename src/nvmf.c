@@ -14,6 +14,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include "nvmf.skel.h"
+#include "nvmf.bpf.h"
 
 #define ARRAY_SIZE(arr) ((sizeof(arr) / sizeof((arr)[0])))
 
@@ -57,6 +58,17 @@ static void
 handle_connection(struct nvmf_bpf *skel, int client_fd, int *split_fd)
 {
 	struct pollfd poll_fd;
+	struct nvmf_sk_redirect redirect = {
+		/* These two can be hardcoded, as the sockets are always placed in the sockmap in
+		 * the same order:
+		 *  - index 0: client fd
+		 *  - index 1: control fd
+		 *  - index 2: data fd
+		 */
+		.ctrl_idx = 1,
+		.data_idx = 2,
+		.current_idx = -1
+	};
 	int rc, i, errsv, map_off = 0;
 
 	/* Update the element with the input fd to attach the parse/verdict progs to that fd */
@@ -67,6 +79,17 @@ handle_connection(struct nvmf_bpf *skel, int client_fd, int *split_fd)
 			strerror(errsv));
 		return;
 	}
+
+	/* Fill in the redirect map bound to the client socket */
+	rc = bpf_map_update_elem(bpf_map__fd(skel->maps.sk_storage_map),
+				 &client_fd, &redirect, BPF_ANY);
+	if (rc != 0) {
+		errsv = errno;
+		fprintf(stderr, "bpf_map_update_elem() failed: %s\n",
+			strerror(errsv));
+		return;
+	}
+
 	map_off++;
 	for (i = 0; i < 2; ++i) {
 		rc = bpf_map_update_elem(bpf_map__fd(skel->maps.sock_map), &map_off, &split_fd[i],
