@@ -10,6 +10,10 @@ struct nvmf_sk_redirect {
 	int data_idx;
 	/* Index of the socket (ctrl/data) to send the current chunk to */
 	int current_idx;
+	/* Properties of the currently parsed PDU */
+	uint32_t pdu_len;
+	uint32_t pdu_headlen;
+	uint32_t pdu_offset;
 };
 
 #endif
